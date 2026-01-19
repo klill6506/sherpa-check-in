@@ -21,24 +21,39 @@
             <th>ID</th>
             <th>Client Name</th>
             <th>Professional</th>
+            <th>Type</th>
             <th>Time</th>
-            <th>Email Sent</th>
+            <th>Email</th>
+            <th>Excel</th>
             <th>Handled</th>
             <th>Actions</th>
         </tr>
         {% for ci in checkins %}
         <tr{% if ci.handled %} class="handled"{% endif %}>
-            <td>{{ ci.id }}</td>
+            <td title="{{ ci.id }}">{{ ci.id[:8] if ci.id|length > 8 else ci.id }}...</td>
             <td>{{ ci.client_name }}</td>
             <td>{{ ci.professional }}</td>
+            <td>{{ ci.intake_type or 'Appointment' }}</td>
             <td>{{ ci.created_at }}</td>
             <td>
                 {% if ci.email_sent %}
-                Yes
+                <span style="color: #4caf50;">Yes</span>
                 {% else %}
                 <span style="color: #b00020;">No</span>
                 {% if ci.email_error %}
-                <br><small>{{ ci.email_error }}</small>
+                <br><small title="{{ ci.email_error }}">{{ ci.email_error[:20] }}...</small>
+                {% endif %}
+                {% endif %}
+            </td>
+            <td>
+                {% if ci.excel_write_status == 'success' %}
+                <span style="color: #4caf50;">Synced</span>
+                {% elif ci.excel_write_status == 'pending' %}
+                <span style="color: #ff9800;">Pending</span>
+                {% else %}
+                <span style="color: #b00020;">Failed</span>
+                {% if ci.excel_last_error %}
+                <br><small title="{{ ci.excel_last_error }}">{{ ci.excel_last_error[:20] }}...</small>
                 {% endif %}
                 {% endif %}
             </td>
@@ -52,6 +67,11 @@
                 {% if not ci.email_sent %}
                 <form method="POST" action="{{ url_for('admin_resend', checkin_id=ci.id) }}" style="display: inline;">
                     <button type="submit" style="margin: 2px; padding: 5px 10px; font-size: 0.85rem;">Resend Email</button>
+                </form>
+                {% endif %}
+                {% if ci.excel_write_status == 'failed' %}
+                <form method="POST" action="{{ url_for('admin_retry_excel', checkin_id=ci.id) }}" style="display: inline;">
+                    <button type="submit" style="margin: 2px; padding: 5px 10px; font-size: 0.85rem; background: #ff9800;">Retry Excel</button>
                 </form>
                 {% endif %}
             </td>

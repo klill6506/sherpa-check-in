@@ -11,17 +11,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from db import init_db, insert_checkin, list_checkins, mark_handled
-from db import seed_professionals, list_professionals, get_professional, add_professional, update_professional, delete_professional
-from db import update_checkin_email_status, get_checkin
-from db import insert_mail_record
+from db import (
+    init_db, insert_checkin, list_checkins, mark_handled,
+    seed_professionals, list_professionals, get_professional,
+    add_professional, update_professional, delete_professional,
+    update_checkin_email_status, get_checkin,
+    update_checkin_excel_status, get_pending_excel_checkins,
+    insert_mail_record, update_mail_excel_status, get_pending_excel_mail
+)
 
-# Excel integration (best-effort)
-try:
-    from excel_utils import append_intake_row, append_mail_row
-    EXCEL_AVAILABLE = True
-except ImportError:
-    EXCEL_AVAILABLE = False
+from excel_sync import sync_checkin_to_excel, sync_mail_to_excel
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
@@ -43,16 +42,13 @@ try:
 except Exception:
     logger.warning('Could not set up file logging to %s', log_file)
 
-# Professionals list: consider loading from a file for admin edits
-# PROFESSIONALS storage moved to DB
-
 # Admin password (simple). For production use a user system.
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
 
 # Default intake days for desk intakes
 DEFAULT_INTAKE_DAYS = int(os.environ.get('DEFAULT_INTAKE_DAYS', '7'))
 
-# Init DB file
+# Init DB
 init_db()
 seed_professionals()
 
@@ -60,18 +56,12 @@ seed_professionals()
 def build_due_date_ics(client_name: str, intake_type: str, due_date) -> str:
     """
     Build a simple all-day ICS event for the given due_date.
-
-    - client_name: the client whose return is due.
-    - intake_type: e.g. 'Drop-off', 'Email', etc. (used in description).
-    - due_date: a date or datetime object representing the due date.
     """
     if hasattr(due_date, "date"):
-        # If it's a datetime, convert to date
         due_date = due_date.date()
 
     uid = f"{uuid4()}@thetaxshelter.com"
     dtstamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    # All-day event: DTSTART = due_date, DTEND = due_date + 1 day
     dtstart = due_date.strftime("%Y%m%d")
     dtend = (due_date + timedelta(days=1)).strftime("%Y%m%d")
 
@@ -97,9 +87,7 @@ def send_email(to_email: str, subject: str, body: str, ics_content: str = None) 
     username = os.environ.get("SMTP_USERNAME")
     password = os.environ.get("SMTP_PASSWORD")
     from_email = os.environ.get("FROM_EMAIL", username or "no-reply@example.com")
-    # Microsoft 365 / Office365 typically uses STARTTLS on port 587 with authentication.
     use_tls = os.environ.get("USE_TLS", "0").lower() in ("1", "true", "yes")
-    # Some providers support implicit SSL (SMTPS) on port 465
     use_ssl = os.environ.get("USE_SSL", "0").lower() in ("1", "true", "yes")
 
     msg = EmailMessage()
@@ -108,7 +96,6 @@ def send_email(to_email: str, subject: str, body: str, ics_content: str = None) 
     msg["Subject"] = subject
     msg.set_content(body)
 
-    # Attach .ics calendar invite if provided
     if ics_content:
         msg.add_attachment(
             ics_content.encode("utf-8"),
@@ -117,9 +104,7 @@ def send_email(to_email: str, subject: str, body: str, ics_content: str = None) 
             filename="return_due.ics"
         )
 
-    # Create a secure SSL context for STARTTLS or SMTP_SSL
     context = ssl.create_default_context()
-    # Retry configuration
     max_retries = int(os.environ.get('SMTP_MAX_RETRIES', '3'))
     base_backoff = float(os.environ.get('SMTP_BACKOFF_SECS', '1.0'))
 
@@ -128,14 +113,12 @@ def send_email(to_email: str, subject: str, body: str, ics_content: str = None) 
     while attempt <= max_retries:
         try:
             if use_ssl:
-                # Implicit SSL (SMTPS)
                 logger.debug('Attempt %d: connecting via SMTP_SSL to %s:%s', attempt + 1, smtp_server, smtp_port)
                 with smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=10, context=context) as smtp:
                     if username and password:
                         smtp.login(username, password)
                     smtp.send_message(msg)
             else:
-                # Plain SMTP connection, optionally upgrade with STARTTLS
                 logger.debug('Attempt %d: connecting via SMTP to %s:%s (STARTTLS=%s)', attempt + 1, smtp_server, smtp_port, use_tls)
                 with smtplib.SMTP(smtp_server, smtp_port, timeout=10) as smtp:
                     try:
@@ -152,29 +135,50 @@ def send_email(to_email: str, subject: str, body: str, ics_content: str = None) 
                         smtp.login(username, password)
                     smtp.send_message(msg)
 
-            # If we reached here, send succeeded
             logger.info('Email sent to %s (subject=%s) on attempt %d', to_email, subject, attempt + 1)
             return
         except smtplib.SMTPRecipientsRefused as e:
-            # Permanent failure: recipient address rejected. Do not retry.
             logger.error('Recipient refused: %s', e)
-            logger.debug('Recipient refused full traceback', exc_info=True)
             raise
         except Exception as e:
             last_exc = e
-            # log at debug for full traceback, info for summary
             logger.warning('Email send attempt %d failed: %s', attempt + 1, e)
-            logger.debug('Full exception on attempt %d', attempt + 1, exc_info=True)
             attempt += 1
             if attempt > max_retries:
                 logger.error('All %d attempts failed for %s: %s', max_retries, to_email, last_exc)
-                logger.debug('Final exception traceback for %s', to_email, exc_info=True)
-                # re-raise to let caller record the error in DB as before
                 raise
-            # exponential backoff (jitter could be added)
             backoff = base_backoff * (2 ** (attempt - 1))
             logger.info('Retrying in %.1f seconds...', backoff)
             time.sleep(backoff)
+
+
+def sync_checkin_async(checkin_id: str, checkin_data: dict, due_date=None):
+    """Sync check-in to Excel via Zapier (best-effort)."""
+    try:
+        data = dict(checkin_data)
+        if due_date:
+            data['due_date'] = due_date
+        success, error = sync_checkin_to_excel(data)
+        if success:
+            update_checkin_excel_status(checkin_id, 'success')
+        else:
+            update_checkin_excel_status(checkin_id, 'failed', error)
+    except Exception as e:
+        logger.warning('Failed to sync check-in %s to Excel: %s', checkin_id, e)
+        update_checkin_excel_status(checkin_id, 'failed', str(e))
+
+
+def sync_mail_async(mail_id: str, mail_data: dict):
+    """Sync mail record to Excel via Zapier (best-effort)."""
+    try:
+        success, error = sync_mail_to_excel(mail_data)
+        if success:
+            update_mail_excel_status(mail_id, 'success')
+        else:
+            update_mail_excel_status(mail_id, 'failed', error)
+    except Exception as e:
+        logger.warning('Failed to sync mail %s to Excel: %s', mail_id, e)
+        update_mail_excel_status(mail_id, 'failed', str(e))
 
 
 @app.route('/')
@@ -203,27 +207,31 @@ def client_checkin():
             proflist = [dict(id=r['id'], name=r['name'], email=r['email']) for r in proflist]
             return render_template('index.html', professionals=proflist, error='Selected professional not found.')
 
-        # Persist
-        checkin_id = insert_checkin(name, prof['name'], professional_id=prof['id'])
+        # Insert check-in with all fields
+        checkin_id = insert_checkin(
+            client_name=name,
+            professional=prof['name'],
+            professional_id=prof['id'],
+            client_email=client_email or None,
+            client_phone=client_phone or None,
+            intake_type='Appointment',
+            notes='Kiosk check-in'
+        )
 
-        # Log to Excel (best-effort)
-        if EXCEL_AVAILABLE:
-            try:
-                append_intake_row(
-                    intake_id=checkin_id,
-                    client_name=name,
-                    professional=prof['name'],
-                    intake_type='Appointment',
-                    client_email=client_email,
-                    client_phone=client_phone,
-                    due_date=None,  # In-person appointments don't have a due date
-                    status='Not started',
-                    notes='Kiosk check-in',
-                )
-            except Exception as e:
-                logger.warning('Failed to write intake to Excel: %s', e)
+        # Sync to Excel via Zapier (best-effort)
+        checkin_data = {
+            'id': checkin_id,
+            'client_name': name,
+            'professional': prof['name'],
+            'client_email': client_email,
+            'client_phone': client_phone,
+            'intake_type': 'Appointment',
+            'notes': 'Kiosk check-in',
+            'created_at': datetime.utcnow(),
+        }
+        sync_checkin_async(checkin_id, checkin_data)
 
-        # Send email (best-effort) and record status
+        # Send email (best-effort)
         subject = f'Client check-in: {name} has arrived'
         body = f"Client name: {name}\nProfessional: {prof['name']}\nCheck-in ID: {checkin_id}"
         if client_email:
@@ -246,7 +254,6 @@ def client_checkin():
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if request.method == 'POST':
-        # login attempt
         pw = request.form.get('password', '')
         if pw == ADMIN_PASSWORD:
             session['admin'] = True
@@ -261,23 +268,22 @@ def admin():
     return render_template('admin_list.html', checkins=checkins)
 
 
-@app.route('/admin/resend/<int:checkin_id>', methods=['POST'])
+@app.route('/admin/resend/<checkin_id>', methods=['POST'])
 def admin_resend(checkin_id):
     if not session.get('admin'):
         return ('', 403)
     ci = get_checkin(checkin_id)
     if not ci:
         return redirect(url_for('admin'))
-    # find professional email
+
     prof = None
     if ci['professional_id']:
         prof = get_professional(ci['professional_id'])
     else:
-        # fallback: lookup by name
         proflist = list_professionals()
         for p in proflist:
             if p['name'] == ci['professional']:
-                prof = p
+                prof = dict(p)
                 break
     if not prof:
         update_checkin_email_status(checkin_id, False, 'Professional not found')
@@ -290,6 +296,19 @@ def admin_resend(checkin_id):
         update_checkin_email_status(checkin_id, True)
     except Exception as e:
         update_checkin_email_status(checkin_id, False, str(e))
+    return redirect(url_for('admin'))
+
+
+@app.route('/admin/retry-excel/<checkin_id>', methods=['POST'])
+def admin_retry_excel(checkin_id):
+    """Retry Excel sync for a failed check-in."""
+    if not session.get('admin'):
+        return ('', 403)
+    ci = get_checkin(checkin_id)
+    if not ci:
+        return redirect(url_for('admin'))
+
+    sync_checkin_async(checkin_id, dict(ci))
     return redirect(url_for('admin'))
 
 
@@ -309,7 +328,6 @@ def admin_logo():
         f = request.files.get('logo')
         if not f:
             return render_template('admin_logo.html', error='No file uploaded')
-        # only accept png for simplicity
         if not f.filename.lower().endswith('.png'):
             return render_template('admin_logo.html', error='Only PNG files are accepted')
         static_dir = app.static_folder or 'static'
@@ -359,7 +377,7 @@ def admin_delete_professional(prof_id):
     return redirect(url_for('admin_professionals'))
 
 
-@app.route('/admin/handle/<int:checkin_id>', methods=['POST'])
+@app.route('/admin/handle/<checkin_id>', methods=['POST'])
 def admin_handle(checkin_id):
     if not session.get('admin'):
         return ('', 403)
@@ -399,7 +417,6 @@ def desk_intake():
         intake_type = request.form.get('intake_type', '').strip()
         notes = request.form.get('notes', '').strip()
 
-        # Validate required fields
         if not client_name or not prof_id:
             return render_template(
                 'desk_intake.html',
@@ -417,30 +434,34 @@ def desk_intake():
                 error='Selected professional not found.'
             )
 
-        # Create check-in record
-        checkin_id = insert_checkin(client_name, prof['name'], professional_id=prof['id'])
-
         # Compute due date
         due_date = date.today() + timedelta(days=DEFAULT_INTAKE_DAYS)
 
-        # Log to Excel (best-effort)
-        if EXCEL_AVAILABLE:
-            try:
-                append_intake_row(
-                    intake_id=checkin_id,
-                    client_name=client_name,
-                    professional=prof['name'],
-                    intake_type=intake_type or 'Drop-off',
-                    client_email=client_email,
-                    client_phone=client_phone,
-                    due_date=due_date,
-                    status='Not started',
-                    notes=notes,
-                )
-            except Exception as e:
-                logger.warning('Failed to write desk intake to Excel: %s', e)
+        # Insert check-in with all fields
+        checkin_id = insert_checkin(
+            client_name=client_name,
+            professional=prof['name'],
+            professional_id=prof['id'],
+            client_email=client_email or None,
+            client_phone=client_phone or None,
+            intake_type=intake_type or 'Drop-off',
+            notes=notes or None
+        )
 
-        # Send email notification to professional (best-effort)
+        # Sync to Excel via Zapier (best-effort)
+        checkin_data = {
+            'id': checkin_id,
+            'client_name': client_name,
+            'professional': prof['name'],
+            'client_email': client_email,
+            'client_phone': client_phone,
+            'intake_type': intake_type or 'Drop-off',
+            'notes': notes,
+            'created_at': datetime.utcnow(),
+        }
+        sync_checkin_async(checkin_id, checkin_data, due_date=due_date)
+
+        # Send email notification
         subject = f"New {intake_type or 'Drop-off'} for {client_name}"
         body_lines = [
             "New intake received:",
@@ -458,8 +479,6 @@ def desk_intake():
             body_lines.append(f"Notes: {notes}")
 
         body = "\n".join(body_lines)
-
-        # Build ICS calendar invite for the due date
         ics_content = build_due_date_ics(client_name, intake_type or 'Drop-off', due_date)
 
         try:
@@ -473,7 +492,7 @@ def desk_intake():
             'desk_intake.html',
             professionals=proflist,
             intake_types=intake_types,
-            success=f'Intake created for {client_name} (ID: {checkin_id}). Due: {due_date.strftime("%Y-%m-%d")}'
+            success=f'Intake created for {client_name} (ID: {checkin_id[:8]}...). Due: {due_date.strftime("%Y-%m-%d")}'
         )
 
     return render_template(
@@ -501,7 +520,6 @@ def desk_mail():
         sent_by = request.form.get('sent_by', '').strip()
         notes = request.form.get('notes', '').strip()
 
-        # Validate required fields
         if not client_name or not prof_id:
             return render_template(
                 'desk_mail.html',
@@ -525,6 +543,7 @@ def desk_mail():
         mail_id = insert_mail_record(
             client_name=client_name,
             professional_id=prof['id'],
+            professional_name=prof['name'],
             item_type=item_type or 'Other',
             method=method or 'USPS',
             tracking_number=tracking_number or None,
@@ -532,28 +551,26 @@ def desk_mail():
             notes=notes or None,
         )
 
-        # Log to Excel (best-effort)
-        if EXCEL_AVAILABLE:
-            try:
-                append_mail_row(
-                    mail_id=mail_id,
-                    client_name=client_name,
-                    professional=prof['name'],
-                    item_type=item_type or 'Other',
-                    method=method or 'USPS',
-                    tracking_number=tracking_number,
-                    sent_by=sent_by,
-                    notes=notes,
-                )
-            except Exception as e:
-                logger.warning('Failed to write mail record to Excel: %s', e)
+        # Sync to Excel via Zapier (best-effort)
+        mail_data = {
+            'id': mail_id,
+            'client_name': client_name,
+            'professional_name': prof['name'],
+            'item_type': item_type or 'Other',
+            'method': method or 'USPS',
+            'tracking_number': tracking_number,
+            'sent_by': sent_by,
+            'notes': notes,
+            'created_at': datetime.utcnow(),
+        }
+        sync_mail_async(mail_id, mail_data)
 
         return render_template(
             'desk_mail.html',
             professionals=proflist,
             item_types=item_types,
             methods=methods,
-            success=f'Mail record created for {client_name} (ID: {mail_id})'
+            success=f'Mail record created for {client_name} (ID: {mail_id[:8]}...)'
         )
 
     return render_template(

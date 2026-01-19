@@ -1,4 +1,6 @@
 flask
 python-dotenv
-openpyxl
 gunicorn
+psycopg2-binary
+requests
+pytz

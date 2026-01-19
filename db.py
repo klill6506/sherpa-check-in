@@ -1,147 +1,212 @@
 """
 Database utilities for Sherpa Check-In.
 
-SQLite database with tables for:
-- checkins: client check-in records
+PostgreSQL database with tables for:
+- checkin_events: client check-in records with Excel sync tracking
 - professionals: staff members who handle clients
-- mail_log: outbound mail/document tracking
+- mail_log: outbound mail/document tracking with Excel sync tracking
 """
 
-import sqlite3
 import os
+import uuid
+from datetime import datetime
+from contextlib import contextmanager
 
-DB_PATH = os.environ.get('CHECKIN_DB_PATH', 'checkins.db')
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 
+@contextmanager
 def get_db():
-    """Get a database connection with Row factory."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Get a database connection with dict cursor."""
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_db():
     """Initialize database tables if they don't exist."""
-    conn = get_db()
-    cur = conn.cursor()
+    with get_db() as conn:
+        cur = conn.cursor()
 
-    # Check-ins table
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS checkins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_name TEXT NOT NULL,
-            professional TEXT NOT NULL,
-            professional_id INTEGER,
-            handled INTEGER DEFAULT 0,
-            email_sent INTEGER DEFAULT 0,
-            email_error TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+        # Check-in events table (enhanced)
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_events (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_name TEXT NOT NULL,
+                professional TEXT NOT NULL,
+                professional_id INTEGER,
+                client_email TEXT,
+                client_phone TEXT,
+                intake_type TEXT DEFAULT 'Appointment',
+                notes TEXT,
+                handled BOOLEAN DEFAULT FALSE,
+                email_sent BOOLEAN DEFAULT FALSE,
+                email_error TEXT,
+                excel_write_status TEXT DEFAULT 'pending',
+                excel_last_error TEXT,
+                excel_written_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
 
-    # Professionals table
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS professionals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+        # Professionals table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS professionals (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
 
-    # Mail log table
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS mail_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_name TEXT NOT NULL,
-            professional_id INTEGER NOT NULL,
-            item_type TEXT NOT NULL,
-            method TEXT NOT NULL,
-            tracking_number TEXT,
-            sent_by TEXT,
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+        # Mail log table (enhanced)
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS mail_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_name TEXT NOT NULL,
+                professional_id INTEGER NOT NULL,
+                professional_name TEXT,
+                item_type TEXT NOT NULL,
+                method TEXT NOT NULL,
+                tracking_number TEXT,
+                sent_by TEXT,
+                notes TEXT,
+                excel_write_status TEXT DEFAULT 'pending',
+                excel_last_error TEXT,
+                excel_written_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 
 def seed_professionals():
     """Seed default professionals if the table is empty."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT COUNT(*) FROM professionals')
-    count = cur.fetchone()[0]
-    if count == 0:
-        # Add some default professionals - customize as needed
-        defaults = [
-            ('John Smith', 'john@example.com'),
-            ('Jane Doe', 'jane@example.com'),
-        ]
-        cur.executemany('INSERT INTO professionals (name, email) VALUES (?, ?)', defaults)
-        conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute('SELECT COUNT(*) as count FROM professionals')
+        count = cur.fetchone()['count']
+        if count == 0:
+            defaults = [
+                ('John Smith', 'john@example.com'),
+                ('Jane Doe', 'jane@example.com'),
+            ]
+            for name, email in defaults:
+                cur.execute(
+                    'INSERT INTO professionals (name, email) VALUES (%s, %s)',
+                    (name, email)
+                )
+            conn.commit()
 
 
 # -----------------------------
 # Check-in functions
 # -----------------------------
 
-def insert_checkin(client_name: str, professional: str, professional_id: int = None) -> int:
-    """Insert a check-in record and return the new ID."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        'INSERT INTO checkins (client_name, professional, professional_id) VALUES (?, ?, ?)',
-        (client_name, professional, professional_id)
-    )
-    conn.commit()
-    checkin_id = cur.lastrowid
-    conn.close()
-    return checkin_id
+def insert_checkin(
+    client_name: str,
+    professional: str,
+    professional_id: int = None,
+    client_email: str = None,
+    client_phone: str = None,
+    intake_type: str = 'Appointment',
+    notes: str = None
+) -> str:
+    """Insert a check-in record and return the new UUID."""
+    event_id = str(uuid.uuid4())
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            '''INSERT INTO checkin_events
+               (id, client_name, professional, professional_id, client_email,
+                client_phone, intake_type, notes)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)''',
+            (event_id, client_name, professional, professional_id, client_email,
+             client_phone, intake_type, notes)
+        )
+        conn.commit()
+    return event_id
 
 
-def list_checkins():
-    """List all check-ins, most recent first."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM checkins ORDER BY created_at DESC')
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+def list_checkins(limit: int = 50):
+    """List check-ins, most recent first."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            'SELECT * FROM checkin_events ORDER BY created_at DESC LIMIT %s',
+            (limit,)
+        )
+        return cur.fetchall()
 
 
-def get_checkin(checkin_id: int):
-    """Get a single check-in by ID."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM checkins WHERE id = ?', (checkin_id,))
-    row = cur.fetchone()
-    conn.close()
-    return row
+def get_checkin(checkin_id: str):
+    """Get a single check-in by UUID."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM checkin_events WHERE id = %s', (checkin_id,))
+        return cur.fetchone()
 
 
-def mark_handled(checkin_id: int):
+def mark_handled(checkin_id: str):
     """Mark a check-in as handled."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('UPDATE checkins SET handled = 1 WHERE id = ?', (checkin_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            'UPDATE checkin_events SET handled = TRUE WHERE id = %s',
+            (checkin_id,)
+        )
+        conn.commit()
 
 
-def update_checkin_email_status(checkin_id: int, success: bool, error: str = None):
+def update_checkin_email_status(checkin_id: str, success: bool, error: str = None):
     """Update the email status for a check-in."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        'UPDATE checkins SET email_sent = ?, email_error = ? WHERE id = ?',
-        (1 if success else 0, error, checkin_id)
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            'UPDATE checkin_events SET email_sent = %s, email_error = %s WHERE id = %s',
+            (success, error, checkin_id)
+        )
+        conn.commit()
+
+
+def update_checkin_excel_status(checkin_id: str, status: str, error: str = None):
+    """Update the Excel sync status for a check-in."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        if status == 'success':
+            cur.execute(
+                '''UPDATE checkin_events
+                   SET excel_write_status = %s, excel_last_error = NULL, excel_written_at = NOW()
+                   WHERE id = %s''',
+                (status, checkin_id)
+            )
+        else:
+            cur.execute(
+                '''UPDATE checkin_events
+                   SET excel_write_status = %s, excel_last_error = %s
+                   WHERE id = %s''',
+                (status, error, checkin_id)
+            )
+        conn.commit()
+
+
+def get_pending_excel_checkins():
+    """Get check-ins that need Excel sync (pending or failed)."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            '''SELECT * FROM checkin_events
+               WHERE excel_write_status IN ('pending', 'failed')
+               ORDER BY created_at ASC
+               LIMIT 100'''
+        )
+        return cur.fetchall()
 
 
 # -----------------------------
@@ -150,53 +215,51 @@ def update_checkin_email_status(checkin_id: int, success: bool, error: str = Non
 
 def list_professionals():
     """List all professionals."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM professionals ORDER BY name')
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM professionals ORDER BY name')
+        return cur.fetchall()
 
 
 def get_professional(prof_id: int):
     """Get a single professional by ID."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM professionals WHERE id = ?', (prof_id,))
-    row = cur.fetchone()
-    conn.close()
-    if row:
-        return dict(row)
-    return None
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM professionals WHERE id = %s', (prof_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def add_professional(name: str, email: str) -> int:
     """Add a new professional and return the ID."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO professionals (name, email) VALUES (?, ?)', (name, email))
-    conn.commit()
-    prof_id = cur.lastrowid
-    conn.close()
-    return prof_id
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            'INSERT INTO professionals (name, email) VALUES (%s, %s) RETURNING id',
+            (name, email)
+        )
+        prof_id = cur.fetchone()['id']
+        conn.commit()
+        return prof_id
 
 
 def update_professional(prof_id: int, name: str, email: str):
     """Update a professional's name and email."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('UPDATE professionals SET name = ?, email = ? WHERE id = ?', (name, email, prof_id))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            'UPDATE professionals SET name = %s, email = %s WHERE id = %s',
+            (name, email, prof_id)
+        )
+        conn.commit()
 
 
 def delete_professional(prof_id: int):
     """Delete a professional by ID."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('DELETE FROM professionals WHERE id = ?', (prof_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute('DELETE FROM professionals WHERE id = %s', (prof_id,))
+        conn.commit()
 
 
 # -----------------------------
@@ -206,34 +269,69 @@ def delete_professional(prof_id: int):
 def insert_mail_record(
     client_name: str,
     professional_id: int,
+    professional_name: str,
     item_type: str,
     method: str,
     tracking_number: str = None,
     sent_by: str = None,
     notes: str = None
-) -> int:
-    """
-    Insert a mail_log row and return the new mail_id.
-    """
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        '''INSERT INTO mail_log
-           (client_name, professional_id, item_type, method, tracking_number, sent_by, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?)''',
-        (client_name, professional_id, item_type, method, tracking_number, sent_by, notes)
-    )
-    conn.commit()
-    mail_id = cur.lastrowid
-    conn.close()
+) -> str:
+    """Insert a mail_log row and return the new UUID."""
+    mail_id = str(uuid.uuid4())
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            '''INSERT INTO mail_log
+               (id, client_name, professional_id, professional_name, item_type,
+                method, tracking_number, sent_by, notes)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+            (mail_id, client_name, professional_id, professional_name, item_type,
+             method, tracking_number, sent_by, notes)
+        )
+        conn.commit()
     return mail_id
 
 
-def list_mail_records():
-    """List all mail records, most recent first."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM mail_log ORDER BY created_at DESC')
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+def list_mail_records(limit: int = 50):
+    """List mail records, most recent first."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            'SELECT * FROM mail_log ORDER BY created_at DESC LIMIT %s',
+            (limit,)
+        )
+        return cur.fetchall()
+
+
+def update_mail_excel_status(mail_id: str, status: str, error: str = None):
+    """Update the Excel sync status for a mail record."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        if status == 'success':
+            cur.execute(
+                '''UPDATE mail_log
+                   SET excel_write_status = %s, excel_last_error = NULL, excel_written_at = NOW()
+                   WHERE id = %s''',
+                (status, mail_id)
+            )
+        else:
+            cur.execute(
+                '''UPDATE mail_log
+                   SET excel_write_status = %s, excel_last_error = %s
+                   WHERE id = %s''',
+                (status, error, mail_id)
+            )
+        conn.commit()
+
+
+def get_pending_excel_mail():
+    """Get mail records that need Excel sync (pending or failed)."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            '''SELECT * FROM mail_log
+               WHERE excel_write_status IN ('pending', 'failed')
+               ORDER BY created_at ASC
+               LIMIT 100'''
+        )
+        return cur.fetchall()
