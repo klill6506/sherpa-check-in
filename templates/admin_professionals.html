@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Professionals - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-dark{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="{{ url_for('admin') }}">&larr; Back to Check-ins</a></p>
+
+<h2 class="page-title">Manage Tax Professionals</h2>
+
+<p style="margin-bottom: 20px;">
+    <a href="{{ url_for('admin_add_professional') }}" class="btn">Add Professional</a>
+</p>
+
+{% if professionals %}
+<div style="overflow-x: auto;">
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email (for notifications)</th>
+            <th>Actions</th>
+        </tr>
+        {% for prof in professionals %}
+        <tr>
+            <td>{{ prof.id }}</td>
+            <td>{{ prof.name }}</td>
+            <td>{{ prof.email }}</td>
+            <td>
+                <a href="{{ url_for('admin_edit_professional', prof_id=prof.id) }}" class="btn secondary" style="padding: 5px 10px; font-size: 0.85rem; margin: 2px;">Edit</a>
+                <form method="POST" action="{{ url_for('admin_delete_professional', prof_id=prof.id) }}" style="display: inline;">
+                    <button type="submit" class="secondary" style="padding: 5px 10px; font-size: 0.85rem; margin: 2px;" onclick="return confirm('Delete {{ prof.name }}?');">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% else %}
+<p class="text-muted">No professionals yet. <a href="{{ url_for('admin_add_professional') }}">Add one</a>.</p>
+{% endif %}
+{% endblock %}

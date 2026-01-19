@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Check-ins - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-dark{% endblock %}
+
+{% block content %}
+<h2 class="page-title">Check-ins</h2>
+
+<div class="nav-links">
+    <a href="{{ url_for('desk_home') }}">Staff Portal</a>
+    <a href="{{ url_for('admin_professionals') }}">Manage Professionals</a>
+    <a href="{{ url_for('admin_logo') }}">Upload Logo</a>
+    <a href="{{ url_for('admin_logout') }}">Logout</a>
+</div>
+
+{% if checkins %}
+<div style="overflow-x: auto;">
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Client Name</th>
+            <th>Professional</th>
+            <th>Time</th>
+            <th>Email Sent</th>
+            <th>Handled</th>
+            <th>Actions</th>
+        </tr>
+        {% for ci in checkins %}
+        <tr{% if ci.handled %} class="handled"{% endif %}>
+            <td>{{ ci.id }}</td>
+            <td>{{ ci.client_name }}</td>
+            <td>{{ ci.professional }}</td>
+            <td>{{ ci.created_at }}</td>
+            <td>
+                {% if ci.email_sent %}
+                Yes
+                {% else %}
+                <span style="color: #b00020;">No</span>
+                {% if ci.email_error %}
+                <br><small>{{ ci.email_error }}</small>
+                {% endif %}
+                {% endif %}
+            </td>
+            <td>{% if ci.handled %}Yes{% else %}No{% endif %}</td>
+            <td>
+                {% if not ci.handled %}
+                <form method="POST" action="{{ url_for('admin_handle', checkin_id=ci.id) }}" style="display: inline;">
+                    <button type="submit" class="secondary" style="margin: 2px; padding: 5px 10px; font-size: 0.85rem;">Mark Handled</button>
+                </form>
+                {% endif %}
+                {% if not ci.email_sent %}
+                <form method="POST" action="{{ url_for('admin_resend', checkin_id=ci.id) }}" style="display: inline;">
+                    <button type="submit" style="margin: 2px; padding: 5px 10px; font-size: 0.85rem;">Resend Email</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% else %}
+<p class="text-muted">No check-ins yet.</p>
+{% endif %}
+{% endblock %}

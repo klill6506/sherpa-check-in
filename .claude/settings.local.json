@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(if not exist \"T:\\sherpa-check-in\\static\" mkdir \"T:\\sherpa-check-in\\static\")",
+      "Bash(magick:*)",
+      "Bash(python:*)",
+      "Bash(sqlite3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

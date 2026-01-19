@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Client Check-In - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-client{% endblock %}
+
+{% block content %}
+<div class="text-center">
+    <h2 class="page-title">Client Check-In</h2>
+
+    {% if error %}
+    <div class="message-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('client_checkin') }}" style="max-width: 400px; margin: 0 auto; text-align: left;">
+        <label class="required" for="name">Your Name</label>
+        <input type="text" id="name" name="name" required>
+
+        <label for="email">Your Email (optional)</label>
+        <input type="email" id="email" name="email">
+
+        <label for="phone">Your Phone (optional)</label>
+        <input type="tel" id="phone" name="phone" class="phone-input" oninput="formatPhone(this)" placeholder="555-555-5555">
+
+        <label class="required" for="professional">Who are you here to see?</label>
+        <select id="professional" name="professional" required>
+            <option value="">-- Select --</option>
+            {% for prof in professionals %}
+            <option value="{{ prof.id }}">{{ prof.name }}</option>
+            {% endfor %}
+        </select>
+
+        <div class="text-center">
+            <button type="submit" style="font-size: 1.2rem; padding: 15px 40px; margin-top: 20px;">Check In</button>
+        </div>
+    </form>
+
+    <div class="footer-links text-center">
+        <a href="{{ url_for('home') }}">&larr; Back to Home</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Client Intake - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-dark{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="{{ url_for('desk_home') }}">&larr; Back to Staff Portal</a></p>
+
+<h2 class="page-title">Client Intake</h2>
+
+{% if error %}
+<div class="message-error">{{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="message-success">{{ success }}</div>
+{% endif %}
+
+<form method="POST" style="max-width: 500px;">
+    <label class="required" for="client_name">Client Name</label>
+    <input type="text" id="client_name" name="client_name" required>
+
+    <label for="client_email">Client Email</label>
+    <input type="email" id="client_email" name="client_email">
+
+    <label for="client_phone">Client Phone</label>
+    <input type="tel" id="client_phone" name="client_phone" class="phone-input" oninput="formatPhone(this)" placeholder="555-555-5555">
+
+    <label class="required" for="professional">Professional</label>
+    <select id="professional" name="professional" required>
+        <option value="">-- Select --</option>
+        {% for prof in professionals %}
+        <option value="{{ prof.id }}">{{ prof.name }}</option>
+        {% endfor %}
+    </select>
+
+    <label class="required" for="intake_type">Intake Type</label>
+    <select id="intake_type" name="intake_type" required>
+        {% for itype in intake_types %}
+        <option value="{{ itype }}">{{ itype }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="notes">Notes</label>
+    <textarea id="notes" name="notes" rows="4"></textarea>
+
+    <button type="submit">Create Intake</button>
+</form>
+{% endblock %}

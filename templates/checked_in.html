@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Checked In - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-client{% endblock %}
+
+{% block extra_head %}
+<meta http-equiv="refresh" content="10;url={{ url_for('client_checkin') }}">
+{% endblock %}
+
+{% block content %}
+<div class="text-center">
+    <h2 class="page-title" style="color: #0b7a2a;">Thank You!</h2>
+
+    <p style="font-size: 1.3em;">
+        <strong>{{ name }}</strong>, you are now checked in.
+    </p>
+
+    <p style="font-size: 1.2em;">
+        {{ professional }} has been notified and will be with you shortly.
+    </p>
+
+    <p style="font-size: 1.1em;">Please have a seat.</p>
+
+    <div class="footer-links">
+        <p class="text-muted">
+            This page will automatically return to the check-in screen in 10 seconds.<br>
+            <a href="{{ url_for('client_checkin') }}">Click here</a> to return now.
+        </p>
+    </div>
+</div>
+{% endblock %}

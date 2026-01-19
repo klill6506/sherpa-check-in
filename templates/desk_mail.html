@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Mail Log - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-dark{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="{{ url_for('desk_home') }}">&larr; Back to Staff Portal</a></p>
+
+<h2 class="page-title">Mail Log</h2>
+
+{% if error %}
+<div class="message-error">{{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="message-success">{{ success }}</div>
+{% endif %}
+
+<form method="POST" style="max-width: 500px;">
+    <label class="required" for="client_name">Client Name</label>
+    <input type="text" id="client_name" name="client_name" required>
+
+    <label class="required" for="professional">Professional</label>
+    <select id="professional" name="professional" required>
+        <option value="">-- Select --</option>
+        {% for prof in professionals %}
+        <option value="{{ prof.id }}">{{ prof.name }}</option>
+        {% endfor %}
+    </select>
+
+    <label class="required" for="item_type">Item Type</label>
+    <select id="item_type" name="item_type" required>
+        {% for itype in item_types %}
+        <option value="{{ itype }}">{{ itype }}</option>
+        {% endfor %}
+    </select>
+
+    <label class="required" for="method">Method</label>
+    <select id="method" name="method" required>
+        {% for m in methods %}
+        <option value="{{ m }}">{{ m }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="tracking_number">Tracking Number</label>
+    <input type="text" id="tracking_number" name="tracking_number">
+
+    <label for="sent_by">Sent By (initials)</label>
+    <input type="text" id="sent_by" name="sent_by" maxlength="10">
+
+    <label for="notes">Notes</label>
+    <textarea id="notes" name="notes" rows="4"></textarea>
+
+    <button type="submit">Log Mail Record</button>
+</form>
+{% endblock %}

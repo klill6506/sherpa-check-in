@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Staff Portal - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-dark{% endblock %}
+
+{% block content %}
+<div class="text-center">
+    <h2 class="page-title">The Tax Shelter - Staff Portal</h2>
+    <p class="text-muted">Select an option below:</p>
+
+    <div class="button-grid" style="margin-top: 30px;">
+        <a href="{{ url_for('desk_intake') }}" class="big-button secondary">
+            Client Intake
+        </a>
+        <a href="{{ url_for('desk_mail') }}" class="big-button secondary">
+            Mail Log
+        </a>
+    </div>
+
+    <div class="button-grid" style="margin-top: 20px;">
+        <a href="{{ url_for('admin') }}" class="big-button secondary" style="flex: 0 1 auto; padding: 15px 30px; font-size: 1rem;">
+            View Check-ins
+        </a>
+    </div>
+
+    <div class="footer-links text-center">
+        <a href="{{ url_for('admin_professionals') }}">Manage Tax Professionals</a>
+        &nbsp;|&nbsp;
+        <a href="{{ url_for('admin_logout') }}">Logout</a>
+        &nbsp;|&nbsp;
+        <a href="{{ url_for('home') }}">&larr; Back to Home</a>
+    </div>
+</div>
+{% endblock %}

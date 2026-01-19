@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <title>{% block title %}The Tax Shelter{% endblock %}</title>
+    <style>
+        :root {
+            --primary-color: #BB0000;   /* Deep Red */
+            --accent-color: #36454F;    /* Charcoal */
+            --bg-light: #f7f7f7;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background-color: var(--bg-light);
+            color: var(--accent-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        header .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        header img.logo {
+            height: 60px;
+        }
+
+        header .umbrella {
+            font-size: 3rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 30px auto;
+            background: white;
+            padding: 20px 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .button-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .big-button {
+            flex: 1 1 250px;
+            max-width: 300px;
+            text-align: center;
+            padding: 30px 20px;
+            border-radius: 8px;
+            background-color: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            font-size: 1.2rem;
+            font-weight: 600;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .big-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .big-button.secondary {
+            background-color: var(--accent-color);
+        }
+
+        form label {
+            display: block;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        input[type="password"],
+        input[type="file"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 4px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(187, 0, 0, 0.1);
+        }
+
+        button, .btn {
+            margin-top: 15px;
+            padding: 10px 20px;
+            border-radius: 4px;
+            border: none;
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        button:hover, .btn:hover {
+            background-color: #990000;
+        }
+
+        button.secondary, .btn.secondary {
+            background-color: var(--accent-color);
+        }
+
+        button.secondary:hover, .btn.secondary:hover {
+            background-color: #2a363d;
+        }
+
+        .message-error {
+            color: #b00020;
+            background-color: #ffebee;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        .message-success {
+            color: #0b7a2a;
+            background-color: #e8f5e9;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        a {
+            color: var(--primary-color);
+        }
+
+        .back-link {
+            margin-bottom: 15px;
+        }
+
+        .page-title {
+            margin-top: 0;
+            color: var(--accent-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        table th, table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        table th {
+            background-color: var(--bg-light);
+            font-weight: 600;
+        }
+
+        table tr:hover {
+            background-color: #fafafa;
+        }
+
+        table tr.handled {
+            background-color: #e8f5e9;
+        }
+
+        .nav-links {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .nav-links a {
+            margin-right: 15px;
+        }
+
+        .footer-links {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-muted {
+            color: #666;
+        }
+
+        .required::after {
+            content: " *";
+            color: var(--primary-color);
+        }
+
+        /* Dark theme for employee portal */
+        body.theme-dark {
+            background-color: var(--accent-color);
+        }
+
+        body.theme-dark header {
+            background-color: #2a363d;
+        }
+
+        body.theme-dark .container {
+            background-color: #f7f7f7;
+        }
+
+        body.theme-dark .footer-links a {
+            color: var(--primary-color);
+        }
+
+        /* Light/Client theme - bright and welcoming */
+        body.theme-client {
+            background-color: #fff;
+        }
+
+        body.theme-client .container {
+            box-shadow: 0 4px 20px rgba(187, 0, 0, 0.1);
+            border-top: 4px solid var(--primary-color);
+        }
+
+        /* Phone number formatting */
+        .phone-input {
+            font-family: monospace;
+        }
+    </style>
+    <script>
+        // Auto-format phone numbers with hyphens
+        function formatPhone(input) {
+            let value = input.value.replace(/\D/g, '');
+            if (value.length > 10) value = value.substring(0, 10);
+            if (value.length > 6) {
+                value = value.substring(0, 3) + '-' + value.substring(3, 6) + '-' + value.substring(6);
+            } else if (value.length > 3) {
+                value = value.substring(0, 3) + '-' + value.substring(3);
+            }
+            input.value = value;
+        }
+    </script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <header>
+        <div class="header-content">
+            <span class="umbrella">&#9730;</span>
+            <h1>The Tax Shelter</h1>
+        </div>
+    </header>
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

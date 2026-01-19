@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - The Tax Shelter{% endblock %}
+
+{% block content %}
+<div class="text-center">
+    <h2 class="page-title">Welcome to The Tax Shelter</h2>
+    <p class="text-muted">Please select an option below:</p>
+
+    <div class="button-grid" style="margin-top: 30px;">
+        <a href="{{ url_for('client_checkin') }}" class="big-button">
+            Client Check-In
+        </a>
+        <a href="{{ url_for('desk_home') }}" class="big-button secondary">
+            Employee Portal
+        </a>
+    </div>
+</div>
+{% endblock %}

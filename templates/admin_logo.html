@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Logo - The Tax Shelter{% endblock %}
+
+{% block body_class %}theme-dark{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="{{ url_for('admin') }}">&larr; Back to Check-ins</a></p>
+
+<h2 class="page-title">Upload Logo</h2>
+
+{% if error %}
+<div class="message-error">{{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="message-success">{{ success }}</div>
+{% endif %}
+
+<form method="POST" enctype="multipart/form-data" style="max-width: 400px;">
+    <label for="logo">Select PNG file</label>
+    <input type="file" id="logo" name="logo" accept=".png">
+
+    <button type="submit">Upload</button>
+</form>
+
+<p class="text-muted" style="margin-top: 20px;">
+    <small>Only PNG files are accepted. The logo will appear in the header across all pages.</small>
+</p>
+{% endblock %}
