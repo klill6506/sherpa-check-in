@@ -94,8 +94,14 @@ def seed_professionals():
         count = cur.fetchone()['count']
         if count == 0:
             defaults = [
-                ('John Smith', 'john@example.com'),
-                ('Jane Doe', 'jane@example.com'),
+                ('David Nelson', 'david@thetaxshelter.com'),
+                ('Gail Daniels', 'gail@thetaxshelter.com'),
+                ('Georgianna Lill', 'georgianna@thetaxshelter.com'),
+                ('Jacob Lill', 'jacob@thetaxshelter.com'),
+                ('Jenny Delgado', 'jenny@thetaxshelter.com'),
+                ('John Lill', 'john@thetaxshelter.com'),
+                ('Ken Lill', 'ken@thetaxshelter.com'),
+                ('Tom Parkman', 'tom@thetaxshelter.com'),
             ]
             for name, email in defaults:
                 cur.execute(
