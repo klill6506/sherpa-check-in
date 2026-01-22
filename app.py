@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import threading
 from datetime import date, datetime, timedelta
 from uuid import uuid4
 from flask import Flask, render_template, request, redirect, url_for, session
@@ -152,6 +153,26 @@ def send_email(to_email: str, subject: str, body: str, ics_content: str = None) 
             time.sleep(backoff)
 
 
+def send_email_background(to_email: str, subject: str, body: str,
+                          checkin_id: str = None, ics_content: str = None):
+    """
+    Send email in a background thread to avoid blocking the request.
+    Updates checkin email status if checkin_id is provided.
+    """
+    def _send():
+        try:
+            send_email(to_email, subject, body, ics_content=ics_content)
+            if checkin_id:
+                update_checkin_email_status(checkin_id, True)
+        except Exception as e:
+            logger.warning('Background email send failed: %s', e)
+            if checkin_id:
+                update_checkin_email_status(checkin_id, False, str(e))
+
+    thread = threading.Thread(target=_send, daemon=True)
+    thread.start()
+
+
 def sync_checkin_async(checkin_id: str, checkin_data: dict, due_date=None):
     """Sync check-in to Excel via Zapier (best-effort)."""
     try:
@@ -231,18 +252,14 @@ def client_checkin():
         }
         sync_checkin_async(checkin_id, checkin_data)
 
-        # Send email (best-effort)
+        # Send email in background (non-blocking to avoid worker timeouts)
         subject = f'Client check-in: {name} has arrived'
         body = f"Client name: {name}\nProfessional: {prof['name']}\nCheck-in ID: {checkin_id}"
         if client_email:
             body += f"\nClient email: {client_email}"
         if client_phone:
             body += f"\nClient phone: {client_phone}"
-        try:
-            send_email(prof['email'], subject, body)
-            update_checkin_email_status(checkin_id, True)
-        except Exception as e:
-            update_checkin_email_status(checkin_id, False, str(e))
+        send_email_background(prof['email'], subject, body, checkin_id=checkin_id)
 
         return render_template('checked_in.html', name=name, professional=prof['name'])
 
@@ -481,12 +498,8 @@ def desk_intake():
         body = "\n".join(body_lines)
         ics_content = build_due_date_ics(client_name, intake_type or 'Drop-off', due_date)
 
-        try:
-            send_email(prof['email'], subject, body, ics_content=ics_content)
-            update_checkin_email_status(checkin_id, True)
-        except Exception as e:
-            logger.warning('Failed to send desk intake email: %s', e)
-            update_checkin_email_status(checkin_id, False, str(e))
+        # Send email in background (non-blocking to avoid worker timeouts)
+        send_email_background(prof['email'], subject, body, checkin_id=checkin_id, ics_content=ics_content)
 
         return render_template(
             'desk_intake.html',
