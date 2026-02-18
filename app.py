@@ -21,6 +21,30 @@ from db import (
 )
 
 from excel_sync import sync_checkin_to_excel, sync_mail_to_excel
+import requests as http_requests
+
+# --------------- Slack integration ---------------
+SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
+SLACK_NOTIFY_PROFESSIONAL = 'Ken Lill'
+
+
+def send_slack_notification(client_name: str, intake_type: str = 'Appointment',
+                            client_email: str = None, client_phone: str = None,
+                            notes: str = None) -> None:
+    """Send a Slack message when a client checks in for Ken Lill."""
+    if not SLACK_WEBHOOK_URL:
+        return
+    lines = [f":wave: *{client_name}* just checked in ({intake_type})"]
+    if client_email:
+        lines.append(f"Email: {client_email}")
+    if client_phone:
+        lines.append(f"Phone: {client_phone}")
+    if notes:
+        lines.append(f"Notes: {notes}")
+    try:
+        http_requests.post(SLACK_WEBHOOK_URL, json={'text': '\n'.join(lines)}, timeout=5)
+    except Exception as e:
+        logger.warning('Slack notification failed: %s', e)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
@@ -244,6 +268,10 @@ def client_checkin():
         except Exception as e:
             update_checkin_email_status(checkin_id, False, str(e))
 
+        # Slack notification (Ken Lill only)
+        if prof['name'] == SLACK_NOTIFY_PROFESSIONAL:
+            send_slack_notification(name, 'Appointment', client_email, client_phone)
+
         return render_template('checked_in.html', name=name, professional=prof['name'])
 
     proflist = list_professionals()
@@ -291,6 +319,10 @@ def admin_resend(checkin_id):
 
     subject = f"Client check-in: {ci['client_name']} has arrived"
     body = f"Client name: {ci['client_name']}\nProfessional: {prof['name']}\nCheck-in ID: {checkin_id}"
+    if ci.get('client_email'):
+        body += f"\nClient email: {ci['client_email']}"
+    if ci.get('client_phone'):
+        body += f"\nClient phone: {ci['client_phone']}"
     try:
         send_email(prof['email'], subject, body)
         update_checkin_email_status(checkin_id, True)
@@ -487,6 +519,11 @@ def desk_intake():
         except Exception as e:
             logger.warning('Failed to send desk intake email: %s', e)
             update_checkin_email_status(checkin_id, False, str(e))
+
+        # Slack notification (Ken Lill only)
+        if prof['name'] == SLACK_NOTIFY_PROFESSIONAL:
+            send_slack_notification(client_name, intake_type or 'Drop-off',
+                                    client_email, client_phone, notes)
 
         return render_template(
             'desk_intake.html',
