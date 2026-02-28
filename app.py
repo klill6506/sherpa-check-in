@@ -20,7 +20,7 @@ from db import (
     insert_mail_record, update_mail_excel_status, get_pending_excel_mail
 )
 
-from excel_sync import sync_checkin_to_excel, sync_mail_to_excel
+from sheets_sync import sync_checkin_to_sheets, sync_mail_to_sheets
 import requests as http_requests
 
 # --------------- Slack integration ---------------
@@ -177,31 +177,31 @@ def send_email(to_email: str, subject: str, body: str, ics_content: str = None) 
 
 
 def sync_checkin_async(checkin_id: str, checkin_data: dict, due_date=None):
-    """Sync check-in to Excel via Zapier (best-effort)."""
+    """Sync check-in to Google Sheets (best-effort)."""
     try:
         data = dict(checkin_data)
         if due_date:
             data['due_date'] = due_date
-        success, error = sync_checkin_to_excel(data)
+        success, error = sync_checkin_to_sheets(data)
         if success:
             update_checkin_excel_status(checkin_id, 'success')
         else:
             update_checkin_excel_status(checkin_id, 'failed', error)
     except Exception as e:
-        logger.warning('Failed to sync check-in %s to Excel: %s', checkin_id, e)
+        logger.warning('Failed to sync check-in %s to Google Sheets: %s', checkin_id, e)
         update_checkin_excel_status(checkin_id, 'failed', str(e))
 
 
 def sync_mail_async(mail_id: str, mail_data: dict):
-    """Sync mail record to Excel via Zapier (best-effort)."""
+    """Sync mail record to Google Sheets (best-effort)."""
     try:
-        success, error = sync_mail_to_excel(mail_data)
+        success, error = sync_mail_to_sheets(mail_data)
         if success:
             update_mail_excel_status(mail_id, 'success')
         else:
             update_mail_excel_status(mail_id, 'failed', error)
     except Exception as e:
-        logger.warning('Failed to sync mail %s to Excel: %s', mail_id, e)
+        logger.warning('Failed to sync mail %s to Google Sheets: %s', mail_id, e)
         update_mail_excel_status(mail_id, 'failed', str(e))
 
 
@@ -242,7 +242,7 @@ def client_checkin():
             notes='Kiosk check-in'
         )
 
-        # Sync to Excel via Zapier (best-effort)
+        # Sync to Google Sheets (best-effort)
         checkin_data = {
             'id': checkin_id,
             'client_name': name,
@@ -480,7 +480,7 @@ def desk_intake():
             notes=notes or None
         )
 
-        # Sync to Excel via Zapier (best-effort)
+        # Sync to Google Sheets (best-effort)
         checkin_data = {
             'id': checkin_id,
             'client_name': client_name,
@@ -588,7 +588,7 @@ def desk_mail():
             notes=notes or None,
         )
 
-        # Sync to Excel via Zapier (best-effort)
+        # Sync to Google Sheets (best-effort)
         mail_data = {
             'id': mail_id,
             'client_name': client_name,

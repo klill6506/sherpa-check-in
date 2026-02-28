@@ -1,8 +1,8 @@
 """
-Background worker for retrying failed Excel syncs.
+Background worker for retrying failed Google Sheets syncs.
 
 Run this as a separate process to periodically retry failed
-Excel writes via Zapier webhooks.
+sheet writes via gspread / Google Sheets API.
 
 Usage:
     python worker.py
@@ -21,7 +21,7 @@ from db import (
     update_checkin_excel_status,
     update_mail_excel_status,
 )
-from excel_sync import sync_checkin_to_excel, sync_mail_to_excel
+from sheets_sync import sync_checkin_to_sheets, sync_mail_to_sheets
 
 # Configure logging
 logging.basicConfig(
@@ -31,7 +31,9 @@ logging.basicConfig(
 logger = logging.getLogger('excel_worker')
 
 # Retry interval in seconds (default: 5 minutes)
-RETRY_INTERVAL = int(os.environ.get('EXCEL_RETRY_INTERVAL', '300'))
+# Support both old and new env var names during transition
+RETRY_INTERVAL = int(os.environ.get('SHEETS_RETRY_INTERVAL',
+                     os.environ.get('EXCEL_RETRY_INTERVAL', '300')))
 
 
 def retry_failed_checkins():
@@ -46,7 +48,7 @@ def retry_failed_checkins():
     for checkin in pending:
         checkin_id = str(checkin['id'])
         try:
-            success, error = sync_checkin_to_excel(dict(checkin))
+            success, error = sync_checkin_to_sheets(dict(checkin))
             if success:
                 update_checkin_excel_status(checkin_id, 'success')
                 logger.info(f'Successfully synced check-in {checkin_id}')
@@ -76,7 +78,7 @@ def retry_failed_mail():
     for mail in pending:
         mail_id = str(mail['id'])
         try:
-            success, error = sync_mail_to_excel(dict(mail))
+            success, error = sync_mail_to_sheets(dict(mail))
             if success:
                 update_mail_excel_status(mail_id, 'success')
                 logger.info(f'Successfully synced mail record {mail_id}')
