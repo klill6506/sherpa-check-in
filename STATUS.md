@@ -21,7 +21,7 @@ We are currently **brainstorming** (not yet executing) a migration of this app's
 ## Done-but-pending-confidence
 
 - Old Render `sherpa-db` still running as **rollback** (instant revert = point `DATABASE_URL` back). Retire it (and the exposed old password) after a few days of confidence — `render.yaml` keeps the block until then.
-- Two test rows in Supabase (check-in "Ken Lill" 21:08Z, mail "Santa Clause" 21:12Z) — delete when convenient.
+- Test rows deleted from Supabase 2026-06-18 (counts back to 2554 check-ins / 303 mail). They remain in the Google Sheet (sync is append-only) — delete manually there if desired.
 
 ## Next up
 
