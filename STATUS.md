@@ -29,7 +29,9 @@ We are currently **brainstorming** (not yet executing) a migration of this app's
 
 ## Blocked / waiting on
 
-- For Phase 1 execution, Ken provides: the Supabase session-pooler connection string for this app (ideally a dedicated `checkin_app` role) and the old Render external `DATABASE_URL`.
+- **Provisioned 2026-06-18:** dedicated `checkin_app` role (LOGIN only, no BYPASSRLS/superuser, no PII access) + isolated `checkin` schema in the shared Supabase project.
+- For Phase 1 execution, Ken still needs to: (1) set the role password via `ALTER ROLE checkin_app WITH PASSWORD '…';` in the Supabase SQL editor; (2) build `NEW_DATABASE_URL` = `postgresql://checkin_app.tmqypsbmswishqkngbrl:<pw>@<pooler-host>:5432/postgres`; (3) supply the old Render external `DATABASE_URL` for the copy.
+- Phase 2 client reads will go through a `postgres`-owned, firm-scoped, SSN-excluding view (no BYPASSRLS) — not direct grants.
 
 ## Known issues
 

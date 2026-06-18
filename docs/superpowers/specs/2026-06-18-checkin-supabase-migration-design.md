@@ -31,9 +31,13 @@ Move the Sherpa Check-In app off its standalone Render Postgres (`sherpa-db`) an
 
 ## Phase 1 — Database migration (infrastructure only, behavior unchanged)
 
+**Already provisioned (2026-06-18):** A dedicated least-privilege role **`checkin_app`** (LOGIN only — no SUPERUSER/BYPASSRLS/CREATEROLE/CREATEDB) and an isolated **`checkin`** schema (owned by `postgres`; `checkin_app` has USAGE + CREATE) now exist in the shared project. The role has **no access to any suite/PII table** — Phase 1 doesn't need it. Tables created by `checkin_app` in the `checkin` schema are owned by `checkin_app`. Ken must set the role password (see below) before it can authenticate.
+
 **Prerequisites (Ken provides at execution):**
-- `NEW_DATABASE_URL` — Supabase session-pooler connection string for this app. **Recommended:** a dedicated least-privilege role `checkin_app` that owns the `checkin` schema and has only `SELECT` on `public.clients_client` / `public.clients_entity`. **Fallback:** reuse the suite's existing `postgres.<ref>` pooler string.
+- `NEW_DATABASE_URL` — Supabase **session-pooler** string using the new role: `postgresql://checkin_app.tmqypsbmswishqkngbrl:<PASSWORD>@<pooler-host>:5432/postgres` (confirm the exact pooler host in the dashboard Connect panel; us-east-1 ⇒ `aws-0-us-east-1.pooler.supabase.com`). Port 5432 = session mode, NOT 6543.
+- Password set once via the Supabase SQL editor: `ALTER ROLE checkin_app WITH PASSWORD '<strong-password>';` (kept out of any transcript), then placed in `NEW_DATABASE_URL`.
 - `OLD_DATABASE_URL` — the Render external connection string for `sherpa-db` (for the one-time copy).
+- Note: migration `001` can keep `CREATE SCHEMA IF NOT EXISTS checkin` (harmless no-op now that the schema exists); it just needs the three `CREATE TABLE`s.
 - Confirmation that the Google Sheets (`GOOGLE_SHEET_ID`, `GOOGLE_SHEETS_CREDENTIALS`), SMTP, and `SLACK_WEBHOOK_URL` env vars carry over to the same web/worker services.
 
 **Steps:**
@@ -79,7 +83,8 @@ Move the Sherpa Check-In app off its standalone Render Postgres (`sherpa-db`) an
 
 ## Phase 2 — Receptionist check-in: client lookup + create (next session)
 
-- Add read-only `GET /api/clients?q=` → `SELECT id, name FROM public.clients_client WHERE firm_id = <TTS> AND name ILIKE '%'||:q||'%' ORDER BY name LIMIT 20`.
+- **Client-read mechanism (decided):** do NOT give `checkin_app` `BYPASSRLS` or direct grants on the PII tables. Instead create a **firm-scoped, SSN-excluding view owned by `postgres`** (e.g. `public.checkin_client_lookup` selecting `id, name` for `firm_id = <TTS>`, plus `email`/`phone` from `clients_entity` but never `ein`/`spouse_ssn`). A view owned by `postgres` (security_invoker = off) reads past RLS as its owner, so `checkin_app` only needs `SELECT` on the view. This is stricter than BYPASSRLS — the role can never see other firms or SSNs. Rationale: the client tables have RLS enabled with **no policies**, so a plain role reads zero rows.
+- Add read-only `GET /api/clients?q=` → `SELECT id, name FROM public.checkin_client_lookup WHERE name ILIKE '%'||:q||'%' ORDER BY name LIMIT 20`.
 - Add nullable `client_id uuid` to `checkin.checkin_events` and `checkin.mail_log`; store it when a match is chosen.
 - Receptionist intake UI: typeahead against the endpoint; **"Create new client"** captures name + basic contact, writing `public.clients_client` (id, name, status='active', firm_id, timestamps) and a `public.clients_entity` row for email/phone. **Must match Django model NOT-NULL/defaults — verify the model constraints before inserting.** This is the first *write* to shared suite tables → requires the backup gate (step 0) first.
 - Retire the self-service `/client` kiosk route in favor of receptionist-driven intake.
