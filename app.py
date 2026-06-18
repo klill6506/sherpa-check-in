@@ -72,9 +72,12 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
 # Default intake days for desk intakes
 DEFAULT_INTAKE_DAYS = int(os.environ.get('DEFAULT_INTAKE_DAYS', '7'))
 
-# Init DB
-init_db()
-seed_professionals()
+# Init DB — guarded so it NEVER auto-creates tables or re-seeds against the shared
+# Supabase DB. Schema + seed data are provisioned by migrations/ and the one-time
+# data copy. Set RUN_DB_INIT=1 only for local dev or first-time setup of a fresh DB.
+if os.environ.get('RUN_DB_INIT') == '1':
+    init_db()
+    seed_professionals()
 
 
 def build_due_date_ics(client_name: str, intake_type: str, due_date) -> str:

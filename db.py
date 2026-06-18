@@ -21,7 +21,14 @@ DATABASE_URL = os.environ.get('DATABASE_URL', '')
 @contextmanager
 def get_db():
     """Get a database connection with dict cursor."""
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn = psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor,
+        # Resolve the app's own tables in the `checkin` schema first; keep `public`
+        # reachable for cross-schema reads (e.g. clients_client in Phase 2).
+        # Harmless on the old Render DB, where the tables live in `public`.
+        options='-c search_path=checkin,public',
+    )
     try:
         yield conn
     finally:

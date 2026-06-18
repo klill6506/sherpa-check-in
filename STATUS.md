@@ -18,20 +18,18 @@ We are currently **brainstorming** (not yet executing) a migration of this app's
 
 ## In progress
 
-- [ ] Migration design **approved** (see `docs/superpowers/specs/2026-06-18-checkin-supabase-migration-design.md`). Ready to execute Phase 1.
+- [~] **Phase 1 — DB migration** (executing). DONE: `checkin_app` role + `checkin` schema provisioned; `checkin.checkin_events` / `professionals` / `mail_log` created (RLS on, anon blocked, `checkin_app` granted DML); `db.py` now sets `search_path=checkin,public`; boot-time `init_db()`/`seed_professionals()` guarded behind `RUN_DB_INIT=1`; `migrations/001_checkin_schema.sql` + `migrate_data.py` committed. REMAINING: run the data copy, then cut over `DATABASE_URL` on Render, then smoke-test.
 
 ## Next up
 
-1. **Phase 1 — DB migration** (a CC kickoff prompt has been prepared): create `checkin` schema in Supabase, copy all rows from Render, repoint `DATABASE_URL`, keep Google Sheets sync intact, keep old Render DB as rollback. Behavior unchanged.
-2. **Phase 2** — receptionist client lookup (`/api/clients`), create-new-client into `clients_client`/`clients_entity`, link `client_id` on check-in/mail, retire the kiosk. (Backup gate before first write to shared tables.)
+1. **Finish Phase 1:** Ken runs `migrate_data.py` (needs `OLD_DATABASE_URL` = Render external + `NEW_DATABASE_URL` = checkin_app pooler string) → verify row counts → set Render `DATABASE_URL` to the Supabase string → smoke-test (check-in + mail + Sheets sync). Keep old Render `sherpa-db` as rollback. Then clean `render.yaml`.
+2. **Phase 2** — receptionist client lookup (`/api/clients`), create-new-client into `clients_client`/`clients_entity`, link `client_id` on check-in/mail, retire the kiosk. (Backup gate before first write to shared tables.) Client reads via a `postgres`-owned, firm-scoped, SSN-excluding view (no BYPASSRLS).
 3. (Deferred) Portal-side event log — extend existing `audit_auditentry` / `portal_accesslog`.
 4. (Separate future project) Split the 1099 SaaS out of the suite into its own Supabase project — decoupled from check-in.
 
 ## Blocked / waiting on
 
-- **Provisioned 2026-06-18:** dedicated `checkin_app` role (LOGIN only, no BYPASSRLS/superuser, no PII access) + isolated `checkin` schema in the shared Supabase project.
-- For Phase 1 execution, Ken still needs to: (1) set the role password via `ALTER ROLE checkin_app WITH PASSWORD '…';` in the Supabase SQL editor; (2) build `NEW_DATABASE_URL` = `postgresql://checkin_app.tmqypsbmswishqkngbrl:<pw>@<pooler-host>:5432/postgres`; (3) supply the old Render external `DATABASE_URL` for the copy.
-- Phase 2 client reads will go through a `postgres`-owned, firm-scoped, SSN-excluding view (no BYPASSRLS) — not direct grants.
+- To finish Phase 1, Ken provides (kept out of chat): the old Render external `DATABASE_URL` and the `checkin_app` Supabase pooler string — both set as env vars to run `migrate_data.py`. `render.yaml` intentionally NOT yet changed (avoids a push triggering Render to repoint/drop the old DB before the copy is verified).
 
 ## Known issues
 
