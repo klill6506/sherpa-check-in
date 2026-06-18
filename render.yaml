@@ -1,7 +1,15 @@
+# Sherpa Check-In — Render blueprint.
+# 2026-06-18: migrated off the local Render Postgres onto the shared Supabase
+# tax-suite DB. DATABASE_URL is now a manually-set secret (the checkin_app
+# session-pooler string), NOT linked fromDatabase, so a blueprint sync can never
+# revert the cutover. The sherpa-db block is kept ONLY as a rollback target until
+# the new setup is proven; delete it (and the instance) once confident.
+
 databases:
   - name: sherpa-db
     plan: free
     databaseName: sherpa_checkin
+    # RETIRED — rollback only. The app no longer uses this. Delete when confident.
 
 services:
   - type: web
@@ -11,9 +19,7 @@ services:
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: sherpa-db
-          property: connectionString
+        sync: false          # shared Supabase checkin_app pooler string; set in dashboard
       - key: SECRET_KEY
         generateValue: true
       - key: ADMIN_PASSWORD
@@ -30,28 +36,13 @@ services:
         sync: false
       - key: USE_TLS
         sync: false
-      - key: ZAPIER_CHECKIN_WEBHOOK_URL
+      - key: GOOGLE_SHEET_ID
         sync: false
-      - key: ZAPIER_MAIL_WEBHOOK_URL
+      - key: GOOGLE_SHEETS_CREDENTIALS
         sync: false
-      - key: TIMEZONE
-        value: America/New_York
-
-  - type: worker
-    name: sherpa-worker
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python worker.py
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: sherpa-db
-          property: connectionString
-      - key: ZAPIER_CHECKIN_WEBHOOK_URL
-        sync: false
-      - key: ZAPIER_MAIL_WEBHOOK_URL
+      - key: SLACK_WEBHOOK_URL
         sync: false
       - key: TIMEZONE
         value: America/New_York
-      - key: EXCEL_RETRY_INTERVAL
-        value: "300"
+      - key: DEFAULT_INTAKE_DAYS
+        value: "7"

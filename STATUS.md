@@ -16,9 +16,12 @@ Live in production on Render.com (web service + background worker + a **dedicate
 
 We are currently **brainstorming** (not yet executing) a migration of this app's database from the standalone Render Postgres to the **shared Supabase tax-suite DB**, plus wiring client name lookups against the central `clients_client` table. No migration code written yet.
 
-## In progress
+- [x] **Phase 1 — DB migration: COMPLETE (2026-06-18).** App is live on the shared Supabase DB. Data migrated (8 professionals, 2554 checkin_events, 303 mail_log; IDs/sequence preserved). Cutover done: Render web service `DATABASE_URL` → checkin_app Supabase pooler string (`aws-1-us-east-1.pooler.supabase.com`; there is **no** worker service despite render.yaml's old block). Smoke-tested end-to-end: a live check-in and a live mail entry both wrote to Supabase AND synced to Google Sheets (`excel_write_status=success`) with email firing. `render.yaml` updated so `DATABASE_URL` is `sync:false` (a blueprint sync can't revert the cutover). Local venv rebuilt on Python 3.12.
 
-- [~] **Phase 1 — DB migration** (executing). DONE: `checkin_app` role + `checkin` schema provisioned; `checkin.checkin_events` / `professionals` / `mail_log` created (RLS on, anon blocked, `checkin_app` granted DML); `db.py` now sets `search_path=checkin,public`; boot-time `init_db()`/`seed_professionals()` guarded behind `RUN_DB_INIT=1`; `migrations/001_checkin_schema.sql` + `migrate_data.py` committed. REMAINING: run the data copy, then cut over `DATABASE_URL` on Render, then smoke-test.
+## Done-but-pending-confidence
+
+- Old Render `sherpa-db` still running as **rollback** (instant revert = point `DATABASE_URL` back). Retire it (and the exposed old password) after a few days of confidence — `render.yaml` keeps the block until then.
+- Two test rows in Supabase (check-in "Ken Lill" 21:08Z, mail "Santa Clause" 21:12Z) — delete when convenient.
 
 ## Next up
 
